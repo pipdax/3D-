@@ -1,11 +1,14 @@
 import React from 'react';
 import { GeometryType, SHAPES } from '../types';
+import { InteractionMode } from '../App';
 import { 
   RotateCcw, 
   Eye, 
   Scissors,
   Lock,
-  Unlock
+  Unlock,
+  Move3d,
+  Rotate3d
 } from 'lucide-react';
 
 interface UIOverlayProps {
@@ -15,6 +18,8 @@ interface UIOverlayProps {
   onToggleFreeze: () => void;
   onReset: () => void;
   onAlignView: () => void;
+  interactionMode: InteractionMode;
+  setInteractionMode: (mode: InteractionMode) => void;
 }
 
 // Map geometry types to Chinese names
@@ -126,7 +131,9 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
   isFrozen,
   onToggleFreeze,
   onReset,
-  onAlignView
+  onAlignView,
+  interactionMode,
+  setInteractionMode
 }) => {
   return (
     <div className="absolute inset-0 pointer-events-none flex flex-col justify-between p-6">
@@ -138,13 +145,15 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
             <Scissors className="w-8 h-8 text-blue-600" />
             3D几何剖面探究实验室
           </h1>
-          <p className="text-slate-500 mt-1 text-sm max-w-md">
-            移动鼠标定位切面。<b>右键拖动</b> 或 <b>Q/E/W/A/S/D</b> 旋转刀具。左键点击锁定切割。
+          <p className="text-slate-500 mt-1 text-sm max-w-md hidden sm:block">
+            {interactionMode === 'camera' 
+              ? '拖动旋转视角。切换到“调整刀具”模式可旋转切割面。' 
+              : '拖动屏幕旋转刀具方向。点击锁定按钮执行切割。'}
           </p>
         </div>
       </div>
 
-      {/* Left Sidebar: Shape Selector - Updated to Grid Layout with Scroll */}
+      {/* Left Sidebar: Shape Selector */}
       <div className="absolute left-6 top-24 bottom-32 pointer-events-auto flex flex-col">
         <div className="bg-white/90 backdrop-blur-md p-3 rounded-2xl shadow-xl border border-white/50 overflow-hidden flex flex-col h-full max-h-[60vh]">
           <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">选择图形</h3>
@@ -199,8 +208,41 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         </button>
       </div>
 
-      {/* Bottom Control Bar: Action Button */}
-      <div className="pointer-events-auto self-center mb-4">
+      {/* Bottom Center: Action Button + Mode Switcher */}
+      <div className="pointer-events-auto self-center mb-6 flex flex-col items-center gap-4">
+        
+        {/* Interaction Mode Switcher (For Tablets) */}
+        {!isFrozen && (
+          <div className="flex bg-white/90 backdrop-blur-md p-1.5 rounded-full shadow-lg border border-white/50 ring-1 ring-slate-900/5">
+            <button
+              onClick={() => setInteractionMode('camera')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all
+                ${interactionMode === 'camera' 
+                  ? 'bg-slate-800 text-white shadow-md' 
+                  : 'text-slate-500 hover:bg-slate-100'
+                }
+              `}
+            >
+              <Move3d className="w-4 h-4" />
+              观察
+            </button>
+            <button
+              onClick={() => setInteractionMode('knife')}
+              className={`
+                flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all
+                ${interactionMode === 'knife' 
+                  ? 'bg-amber-500 text-white shadow-md' 
+                  : 'text-slate-500 hover:bg-slate-100'
+                }
+              `}
+            >
+              <Rotate3d className="w-4 h-4" />
+              调整刀具
+            </button>
+          </div>
+        )}
+
         <button
           onClick={onToggleFreeze}
           className={`
@@ -225,11 +267,19 @@ export const UIOverlay: React.FC<UIOverlayProps> = ({
         </button>
       </div>
       
-      {/* Hints */}
-      <div className="absolute bottom-6 left-6 pointer-events-none text-xs text-slate-500 font-medium space-y-1.5 bg-white/60 backdrop-blur-sm p-3 rounded-lg border border-white/40">
-        <p className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500"></span> 左键点击：执行切割 / 锁定</p>
-        <p className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-400"></span> 右键拖动：旋转刀具</p>
-        <p className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-400"></span> 空白处左键拖动：旋转视角</p>
+      {/* Hints - Dynamic based on mode */}
+      <div className="absolute bottom-6 left-6 pointer-events-none text-xs text-slate-500 font-medium space-y-1.5 bg-white/60 backdrop-blur-sm p-3 rounded-lg border border-white/40 hidden sm:block">
+        {interactionMode === 'camera' ? (
+           <>
+            <p className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-800"></span> 左键拖动：旋转视角</p>
+            <p className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-400"></span> 右键拖动：旋转刀具 (或切换模式)</p>
+           </>
+        ) : (
+           <>
+            <p className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-500"></span> 左键拖动：旋转刀具</p>
+            <p className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-slate-300"></span> 视角已锁定</p>
+           </>
+        )}
       </div>
 
       <style>{`

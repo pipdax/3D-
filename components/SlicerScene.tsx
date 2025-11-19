@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Center, Grid, Environment } from '@react-three/drei';
 import * as THREE from 'three';
 import { GeometryType } from '../types';
+import { InteractionMode } from '../App';
 
 interface SlicerSceneProps {
   geometryType: GeometryType;
@@ -10,6 +11,7 @@ interface SlicerSceneProps {
   triggerAlignView: number; // Increment to trigger alignment
   triggerReset: number;     // Increment to trigger reset
   onUpdatePlane: (pos: THREE.Vector3, rot: THREE.Euler) => void;
+  interactionMode: InteractionMode;
 }
 
 const MaterialSettings = {
@@ -148,7 +150,8 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
   isFrozen,
   triggerAlignView,
   triggerReset,
-  onUpdatePlane
+  onUpdatePlane,
+  interactionMode
 }) => {
   // Use selector to get reactive controls updates
   const camera = useThree((state) => state.camera);
@@ -254,15 +257,30 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
     };
   }, [triggerAlignView, camera, plane, controls]);
 
-  // Mouse Interaction Logic (Right Click Drag)
+  // Mouse Interaction Logic
+  // Supports Right Click Drag (Desktop) OR Left Click Drag (Tablet/Mobile Mode)
   useEffect(() => {
     const canvas = gl.domElement;
     
     const onPointerDown = (e: PointerEvent) => {
-      if (e.button === 2) { // Right click
+      const isRightClick = e.button === 2;
+      const isLeftClick = e.button === 0;
+      const isKnifeMode = interactionMode === 'knife';
+
+      // Allow rotation if Right Click OR (Left Click AND Knife Mode)
+      if (isRightClick || (isKnifeMode && isLeftClick)) {
         isDraggingRotate.current = true;
         lastMouse.current = { x: e.clientX, y: e.clientY };
         canvas.style.cursor = 'grabbing';
+        
+        // Optional: Capture pointer to ensure we get move events even outside canvas
+        if (canvas.setPointerCapture) {
+          try {
+            canvas.setPointerCapture(e.pointerId);
+          } catch (err) {
+            // Ignore errors if pointer capture fails
+          }
+        }
       }
     };
 
@@ -282,10 +300,20 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
       }
     };
 
-    const onPointerUp = () => {
-      isDraggingRotate.current = false;
-      lastMouse.current = null;
-      canvas.style.cursor = 'auto';
+    const onPointerUp = (e: PointerEvent) => {
+      if (isDraggingRotate.current) {
+        isDraggingRotate.current = false;
+        lastMouse.current = null;
+        canvas.style.cursor = interactionMode === 'knife' ? 'grab' : 'auto';
+        
+        if (canvas.releasePointerCapture) {
+          try {
+            canvas.releasePointerCapture(e.pointerId);
+          } catch (err) {
+            // Ignore
+          }
+        }
+      }
     };
 
     const onContextMenu = (e: Event) => e.preventDefault();
@@ -301,7 +329,7 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
       window.removeEventListener('pointerup', onPointerUp);
       canvas.removeEventListener('contextmenu', onContextMenu);
     };
-  }, [gl.domElement, isFrozen]);
+  }, [gl.domElement, isFrozen, interactionMode]);
 
   // Keyboard Rotation Logic
   useEffect(() => {
@@ -323,7 +351,10 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
 
 
   useFrame((state) => {
-     // Plane Position Update (Only if not rotating)
+     // Plane Position Update
+     // In knife mode, we don't want mouse hover to move the plane position as aggressively
+     // because touch users might just be dragging to rotate.
+     // So we only update position if NOT dragging rotation.
      if (!isFrozen && !isDraggingRotate.current) {
         const mouse = state.mouse;
         const raycaster = state.raycaster;
@@ -338,6 +369,7 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
 
         if (target) {
           target.clampLength(0, 2.5);
+          // Lower lerp speed for smoother feel
           planePosRef.current.lerp(target, 0.15);
         }
      }
@@ -385,16 +417,16 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
           <mesh>
             <planeGeometry args={[4, 4]} />
             <meshBasicMaterial 
-              color="#ffffff" 
+              color={interactionMode === 'knife' ? "#fbbf24" : "#ffffff"}
               side={THREE.DoubleSide} 
               transparent 
-              opacity={0.1} 
+              opacity={interactionMode === 'knife' ? 0.2 : 0.1} 
               depthWrite={false} 
             />
           </mesh>
           <lineSegments>
              <edgesGeometry args={[new THREE.PlaneGeometry(4, 4)]} />
-             <lineBasicMaterial color="#ffffff" opacity={0.3} transparent />
+             <lineBasicMaterial color={interactionMode === 'knife' ? "#fbbf24" : "#ffffff"} opacity={0.5} transparent />
           </lineSegments>
           {/* Rotation Ring Helper */}
           <mesh rotation={[Math.PI/2, 0, 0]}>
@@ -405,7 +437,23 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
         </group>
       )}
 
-      <OrbitControls makeDefault minPolarAngle={0} maxPolarAngle={Math.PI} enablePan={false} />
+      {/* 
+         OrbitControls Setup:
+         - Enabled only in 'camera' mode.
+         - Right click (PAN) is disabled via mouseButtons so it doesn't conflict with our custom Right-Click-To-Rotate-Knife logic.
+      */}
+      <OrbitControls 
+        makeDefault 
+        minPolarAngle={0} 
+        maxPolarAngle={Math.PI} 
+        enablePan={false} 
+        enabled={interactionMode === 'camera'}
+        mouseButtons={{
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: null as any // Disable right click on OrbitControls
+        }}
+      />
     </>
   );
 };
