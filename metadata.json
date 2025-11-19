@@ -1,0 +1,5 @@
+{
+  "name": "3D几何剖面探究实验室",
+  "description": "一个交互式的3D实验室，使用虚拟切割平面实时探索几何截面（剖面）。",
+  "requestFramePermissions": []
+}
