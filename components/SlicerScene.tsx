@@ -150,13 +150,20 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
   triggerReset,
   onUpdatePlane
 }) => {
-  const { camera, gl, controls } = useThree();
+  // Use selector to get reactive controls updates
+  const camera = useThree((state) => state.camera);
+  const gl = useThree((state) => state.gl);
+  const controls = useThree((state) => state.controls);
+
   const [plane] = useState(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
   
   // Refs for current plane state to avoid re-renders
   const planePosRef = useRef(new THREE.Vector3(0, 0, 0));
   const planeEulerRef = useRef(new THREE.Euler(0, 0, 0));
   const planeMeshRef = useRef<THREE.Group>(null);
+  
+  // Animation frame reference for canceling animations
+  const animationFrameRef = useRef<number>(0);
   
   // Drag state for rotation
   const isDraggingRotate = useRef(false);
@@ -172,13 +179,40 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
   // Handle Reset Trigger
   useEffect(() => {
     if (triggerReset === 0) return;
+    
+    // Cancel any ongoing camera animation
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = 0;
+    }
+
+    // Reset Plane
     planePosRef.current.set(0, 0, 0);
     planeEulerRef.current.set(0, 0, 0);
-  }, [triggerReset]);
+
+    // Reset Camera View completely
+    const defaultPos = new THREE.Vector3(4, 4, 6);
+    const defaultTarget = new THREE.Vector3(0, 0, 0);
+
+    if (controls) {
+      const orbit = controls as any;
+      orbit.object.position.copy(defaultPos);
+      orbit.target.copy(defaultTarget);
+      orbit.update();
+    } else {
+      camera.position.copy(defaultPos);
+      camera.lookAt(defaultTarget);
+    }
+  }, [triggerReset, camera, controls]);
 
   // Handle Align View Animation
   useEffect(() => {
     if (triggerAlignView === 0) return;
+
+    // Cancel existing animation
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
 
     const normal = plane.normal.clone();
     const center = new THREE.Vector3(0, 0, 0);
@@ -203,17 +237,21 @@ export const SlicerScene: React.FC<SlicerSceneProps> = ({
       camera.lookAt(0,0,0);
 
       if (t < 1) {
-        requestAnimationFrame(animateCam);
+        animationFrameRef.current = requestAnimationFrame(animateCam);
       } else {
         // Ensure orbit controls target is reset to center
         if(controls) {
           (controls as any).target.set(0,0,0);
           (controls as any).update();
         }
+        animationFrameRef.current = 0;
       }
     };
     animateCam();
 
+    return () => {
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
   }, [triggerAlignView, camera, plane, controls]);
 
   // Mouse Interaction Logic (Right Click Drag)
